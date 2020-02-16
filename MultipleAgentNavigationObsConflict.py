@@ -229,9 +229,6 @@ def main(args):
     x_dim, y_dim = env.width,env.height
 
     max_steps = int(4 * 2 * (20 + env.height + env.width))
-    obs, info = env.reset(regenerate_rail=True,
-            regenerate_schedule=True,
-            random_seed=random_seed)
 
     env_renderer = RenderTool(env, gl="PILSVG")
     env_renderer.render_env(show=True, frames=True, show_observations=True)

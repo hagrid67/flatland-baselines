@@ -12,17 +12,78 @@ sys.path.append(str(base_dir))
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import os
 import torch
-from torch_training.dueling_double_dqn import Agent
 
 from flatland.envs.rail_env import RailEnv
 from flatland.envs.rail_generators import sparse_rail_generator
 from flatland.envs.schedule_generators import sparse_schedule_generator
 from flatland.utils.rendertools import RenderTool
+
 from utils.observation_utils import normalize_observation
-from flatland.envs.observations import TreeObsForRailEnv, TreeObsAdditionalForRailEnv, MultipleAgentNavigationObs
+from dueling_double_dqn import Agent
+
+from flatland.envs.observations import TreeObsForRailEnv  # , TreeObsAdditionalForRailEnv, MultipleAgentNavigationObs
 from flatland.envs.predictions import ShortestPathPredictorForRailEnv
 from flatland.envs.agent_utils import RailAgentStatus
+
+from flatland.envs.malfunction_generators import malfunction_from_params
+
+from flatland.envs.malfunction_generators import malfunction_from_file
+from flatland.envs.rail_generators import rail_from_file
+from flatland.envs.schedule_generators import schedule_from_file
+
+
+def train_validate_env_generator_params(train_set, n_agents, x_dim, y_dim, observation, stochastic_data,
+                                        speed_ration_map, seed=1):
+    if train_set:
+        random_seed = np.random.randint(1000)
+    else:
+        random_seed = np.random.randint(1000, 2000)
+    random.seed(random_seed)
+    np.random.seed(random_seed)
+
+    env = RailEnv(width=x_dim,
+                  height=y_dim,
+                  rail_generator=sparse_rail_generator(max_num_cities=3,
+                                                       # Number of cities in map (where train stations are)
+                                                       seed=seed,  # Random seed
+                                                       grid_mode=False,
+                                                       max_rails_between_cities=2,
+                                                       max_rails_in_city=3),
+                  schedule_generator=sparse_schedule_generator(speed_ration_map),
+                  number_of_agents=n_agents,
+                  malfunction_generator_and_process_data=malfunction_from_params(stochastic_data),
+                  # Malfunction data generator
+                  obs_builder_object=observation)
+    return env, random_seed
+
+
+def train_validate_env_generator(train_set, observation):
+    if train_set:
+        random_seed = np.random.randint(1000)
+    else:
+        random_seed = np.random.randint(1000, 2000)
+
+    test_env_no = np.random.randint(9)
+    level_no = np.random.randint(2)
+    random.seed(random_seed)
+    np.random.seed(random_seed)
+
+    test_envs_root = f"./test-envs/Test_{test_env_no}"
+    test_env_file_path = f"Level_{level_no}.pkl"
+
+    test_env_file_path = os.path.join(
+        test_envs_root,
+        test_env_file_path
+    )
+    print(f"Testing Environment: {test_env_file_path} with seed: {random_seed}")
+
+    env = RailEnv(width=1, height=1, rail_generator=rail_from_file(test_env_file_path),
+                  schedule_generator=schedule_from_file(test_env_file_path),
+                  malfunction_generator_and_process_data=malfunction_from_file(test_env_file_path),
+                  obs_builder_object=observation)
+    return env, random_seed
 
 
 def main(argv):
@@ -38,14 +99,26 @@ def main(argv):
     random.seed(1)
     np.random.seed(1)
 
-    # Parameters for the Environment
-    x_dim = 35
-    y_dim = 35
-    n_agents = 10
-
     training = True
-    weights = True
-    visuals = True
+    weights = False
+
+    #  Setting these 2 parameters to True can slow down the network for training
+    visuals = False
+    sleep_for_animation = False
+
+    trained_epochs = 1  # set to trained epoch number if resuming training or for validation , else value is 1
+
+    if training:
+        train_set = True
+    else:
+        train_set = False
+        weights = True
+
+    dataset_type = "MANUAL"  # set as MANUAL if we want to specify our own parameters, AUTO otherwise
+    # Parameters for the Environment
+    x_dim = 25
+    y_dim = 25
+    n_agents = 4
 
     # Use a the malfunction generator to break agents from time to time
     stochastic_data = {'prop_malfunction': 0.05,  # Percentage of defective agents
@@ -55,7 +128,7 @@ def main(argv):
                        }
 
     # Custom observation builder
-    TreeObservation = MultipleAgentNavigationObs(max_depth=2, predictor=ShortestPathPredictorForRailEnv(30))  # TreeObsAdditionalForRailEnv(max_depth=2, predictor=ShortestPathPredictorForRailEnv(30))
+    tree_observation = TreeObsForRailEnv(max_depth=2, predictor=ShortestPathPredictorForRailEnv(30))
 
     # Different agent types (trains) with different speeds.
     speed_ration_map = {1.: 0.25,  # Fast passenger train
@@ -63,21 +136,12 @@ def main(argv):
                         1. / 3.: 0.25,  # Slow commuter train
                         1. / 4.: 0.25}  # Slow freight train
 
-    env = RailEnv(width=x_dim,
-                  height=y_dim,
-                  rail_generator=sparse_rail_generator(max_num_cities=3,
-                                                       # Number of cities in map (where train stations are)
-                                                       seed=1,  # Random seed
-                                                       grid_mode=False,
-                                                       max_rails_between_cities=2,
-                                                       max_rails_in_city=3),
-                  schedule_generator=sparse_schedule_generator(speed_ration_map),
-                  number_of_agents=n_agents,
-                  stochastic_data=stochastic_data,  # Malfunction data generator
-                  obs_builder_object=TreeObservation)
+    if dataset_type == "MANUAL":
+        env, random_seed = train_validate_env_generator_params(train_set, n_agents, x_dim, y_dim, tree_observation,
+                                                               stochastic_data, speed_ration_map)
+    else:
+        env, random_seed = train_validate_env_generator(train_set, tree_observation)
 
-    # After training we want to render the results so we also load a renderer
-    env_renderer = RenderTool(env, gl="PILSVG", )
     # Given the depth of the tree observation and the number of features per node we get the following state_size
     num_features_per_node = env.obs_builder.observation_dim
     tree_depth = 2
@@ -86,7 +150,7 @@ def main(argv):
         nr_nodes += np.power(4, i)
     state_size = num_features_per_node * nr_nodes
     # state_size = state_size + n_agents*12
-    state_size = num_features_per_node
+    # state_size = num_features_per_node
     # The action space of flatland is 5 discrete actions
     action_size = 5
 
@@ -99,7 +163,7 @@ def main(argv):
 
     columns = ['Agents', 'X_DIM', 'Y_DIM', 'TRIAL_NO', 'SCORE',
                'DONE_RATIO', 'STEPS', 'ACTION_PROB']
-    dfAllResults = pd.DataFrame(columns=columns)
+    df_all_results = pd.DataFrame(columns=columns)
 
     # Define training parameters
     eps = 1.
@@ -114,37 +178,50 @@ def main(argv):
     scores = []
     dones_list = []
     action_prob = [0] * action_size
-    agent_obs = [None] * env.get_num_agents()
-    agent_next_obs = [None] * env.get_num_agents()
-    agent_obs_buffer = [None] * env.get_num_agents()
-    agent_action_buffer = [2] * env.get_num_agents()
-    cummulated_reward = np.zeros(env.get_num_agents())
-    update_values = [False] * env.get_num_agents()
+
     # Now we load a Double dueling DQN agent
     agent = Agent(state_size, action_size)
 
+    trial_start = 1
     if weights:
-        trialstart = 2500 #12200
-        eps = max(eps_end, (np.power(eps_decay, trialstart)) * eps)
-        weightFile = f"navigator_checkpoint{trialstart}.pth"
-        with open("./Nets/" + weightFile, "rb") as file_in:
+        trial_start = trained_epochs
+        eps = max(eps_end, (np.power(eps_decay, trial_start)) * eps)
+        weight_file = f"navigator_checkpoint{trial_start}.pth"
+        with open("./Nets/" + weight_file, "rb") as file_in:
             agent.qnetwork_local.load_state_dict(torch.load(file_in))
-    else:
-        trialstart = 1
 
-    for trials in range(trialstart, n_trials + 1):
+    for trials in range(trial_start, n_trials + 1):
 
+        if dataset_type == "MANUAL":
+            env, random_seed = train_validate_env_generator_params(train_set, n_agents, x_dim, y_dim, tree_observation,
+                                                                   stochastic_data, speed_ration_map)
+        else:
+            env, random_seed = train_validate_env_generator(train_set, tree_observation)
         # Reset environment
-        obs, info = env.reset(True, True)
-        env_renderer.reset()
+        obs, info = env.reset(regenerate_rail=True,
+                              regenerate_schedule=True,
+                              activate_agents=False,
+                              random_seed=random_seed)
+
+        env_renderer = RenderTool(env, gl="PILSVG", )
+        if visuals:
+            env_renderer.render_env(show=True, frames=True, show_observations=True)
+
+        x_dim, y_dim, n_agents = env.width, env.height, env.get_num_agents()
+
+        agent_obs = [None] * n_agents
+        agent_next_obs = [None] * n_agents
+        agent_obs_buffer = [None] * n_agents
+        agent_action_buffer = [2] * n_agents
+        cummulated_reward = np.zeros(n_agents)
+        update_values = [False] * n_agents
         # Build agent specific observations
-        for a in range(env.get_num_agents()):
-            if obs[a] is not None:
-                agent_obs[a] = obs[a]
+        for a in range(n_agents):
+            # if obs[a] is not None:
+            #     agent_obs[a] = obs[a]
+            if obs[a]:
+                agent_obs[a] = normalize_observation(obs[a], tree_depth, observation_radius=10)
                 agent_obs_buffer[a] = agent_obs[a].copy()
-            # if obs[a]:
-            #     agent_obs[a] = normalize_observation(obs[a], tree_depth, observation_radius=10)
-            #     agent_obs_buffer[a] = agent_obs[a].copy()
 
         # Reset score and done
         score = 0
@@ -153,7 +230,7 @@ def main(argv):
         # Run episode
         while True:
             # Action
-            for a in range(env.get_num_agents()):
+            for a in range(n_agents):
                 if info['action_required'][a]:
                     # If an action is require, we want to store the obs a that step as well as the action
                     update_values[a] = True
@@ -168,10 +245,10 @@ def main(argv):
             next_obs, all_rewards, done, info = env.step(action_dict)
             step += 1
             if visuals:
-                env_renderer.render_env(show=True, show_predictions=True, show_observations=False)
-            # Update replay buffer and train agent
-            time.sleep(0.1)
-            for a in range(env.get_num_agents()):
+                env_renderer.render_env(show=True, frames=True, show_observations=True)
+                if sleep_for_animation:
+                    time.sleep(0.5)
+            for a in range(n_agents):
                 # Only update the values when we are done or when an action was taken and thus relevant information is present
                 if update_values[a] or done[a]:
                     agent.step(agent_obs_buffer[a], agent_action_buffer[a], all_rewards[a],
@@ -180,11 +257,11 @@ def main(argv):
 
                     agent_obs_buffer[a] = agent_obs[a].copy()
                     agent_action_buffer[a] = action_dict[a]
-                # if next_obs[a]:
-                #     agent_obs[a] = normalize_observation(next_obs[a], tree_depth, observation_radius=10)
-                if next_obs[a] is not None:
-                    agent_obs[a] = next_obs[a]
-                score += all_rewards[a] / env.get_num_agents()
+                if next_obs[a]:
+                    agent_obs[a] = normalize_observation(next_obs[a], tree_depth, observation_radius=10)
+                # if next_obs[a] is not None:
+                #     agent_obs[a] = next_obs[a]
+                score += all_rewards[a] / n_agents
 
             # Copy observation
             if done['__all__']:
@@ -218,10 +295,10 @@ def main(argv):
                  100 * np.mean(done_window),
                  step, action_prob / np.sum(action_prob)]]
 
-        dfCur = pd.DataFrame(data, columns=columns)
-        dfAllResults = pd.concat([dfAllResults, dfCur])
+        df_cur = pd.DataFrame(data, columns=columns)
+        df_all_results = pd.concat([df_all_results, df_cur])
 
-        dfAllResults.to_csv(f'ADD_DQN_TrainingResults_{n_agents}_{x_dim}_{y_dim}.csv', index=False)
+        df_all_results.to_csv(f'{dataset_type}_DQN_TrainingResults_{n_agents}_{x_dim}_{y_dim}.csv', index=False)
 
         if trials % 100 == 0:
             print(
