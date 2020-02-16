@@ -149,14 +149,6 @@ def main(args):
         else:
             assert False, "unhandled option"
 
-    test_envs_root = "./railway"
-    test_env_file_path = "testing_stuff.pkl"
-
-    test_env_file_path = os.path.join(
-        test_envs_root,
-        test_env_file_path
-    )
-
     x_dim = 7
     y_dim = 7
     n_agents = 4
@@ -178,7 +170,7 @@ def main(args):
     #                    #malfunction_generator_and_process_data=malfunction_from_file(test_env_file_path),
     #                    obs_builder_object=MultipleAgentNavigationObs(max_depth=2, predictor=ShortestPathPredictorForRailEnv(30)))
     #
-    # #env.number_of_agents = n_agents
+
     # n_agents = env.number_of_agents
     env = RailEnv(width=x_dim,
                   height=y_dim,
@@ -202,7 +194,9 @@ def main(args):
     max_steps = int(4 * 2 * (20 + env.height + env.width))
     obs, info = env.reset(regenerate_rail=True,
             regenerate_schedule=True,
+            activate_agents=False,
             random_seed=random_seed)
+
     env_renderer = RenderTool(env, gl="PILSVG")
     env_renderer.render_env(show=True, frames=True, show_observations=True)
 

@@ -43,7 +43,13 @@ from flatland.core.grid.grid4_utils import get_new_position
 from flatland.core.grid.grid_utils import coordinate_to_position
 from flatland.envs.agent_utils import RailAgentStatus, EnvAgent
 from flatland.utils.ordered_set import OrderedSet
-random_seed = 100
+train_set = True
+
+if train_set: random_seed = np.random.randint(1000)
+else: random_seed = np.random.randint(1000,2000)
+
+test_env_no = np.random.randint(9)
+level_no = np.random.randint(2)
 random.seed(random_seed)
 np.random.seed(random_seed)
 
@@ -168,6 +174,14 @@ def main(args):
         else:
             assert False, "unhandled option"
 
+    test_envs_root = f"./test-envs/Test_{test_env_no}"
+    test_env_file_path = f"Level_{level_no}.pkl"
+
+    test_env_file_path = os.path.join(
+        test_envs_root,
+        test_env_file_path
+    )
+
     x_dim = 35
     y_dim = 35
     n_agents = 10
@@ -198,6 +212,21 @@ def main(args):
                   number_of_agents=n_agents,
                   malfunction_generator_and_process_data=malfunction_from_params(stochastic_data),
                   obs_builder_object=MultipleAgentNavigationObs(max_depth=2, predictor=ShortestPathPredictorForRailEnv(30)))
+
+
+    # print(f"Testing Environment: {test_env_file_path} with seed: {random_seed}")
+    # env = RailEnv(width=1, height=1, rail_generator=rail_from_file(test_env_file_path),
+    #                    schedule_generator=schedule_from_file(test_env_file_path),
+    #                    malfunction_generator_and_process_data=malfunction_from_file(test_env_file_path),
+    #                    obs_builder_object=MultipleAgentNavigationObs(max_depth=2, predictor=ShortestPathPredictorForRailEnv(30)))
+
+    obs, info = env.reset(regenerate_rail=True,
+            regenerate_schedule=True,
+            activate_agents=False,
+            random_seed=random_seed)
+
+    n_agents = env.get_num_agents()
+    x_dim, y_dim = env.width,env.height
 
     max_steps = int(4 * 2 * (20 + env.height + env.width))
     obs, info = env.reset(regenerate_rail=True,

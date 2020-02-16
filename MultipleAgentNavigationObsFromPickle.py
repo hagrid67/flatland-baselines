@@ -167,12 +167,14 @@ def main(args):
 
     env = RailEnv(width=1, height=1, rail_generator=rail_from_file(test_env_file_path),
                        schedule_generator=schedule_from_file(test_env_file_path),
-                       #malfunction_generator_and_process_data=malfunction_from_file(test_env_file_path),
+                       malfunction_generator_and_process_data=malfunction_from_file(test_env_file_path),
                        obs_builder_object=MultipleAgentNavigationObs(max_depth=2, predictor=ShortestPathPredictorForRailEnv(30)))
 
     max_steps = int(4 * 2 * (20 + env.height + env.width))
+
     obs, info = env.reset(regenerate_rail=True,
             regenerate_schedule=True,
+            activate_agents=False,
             random_seed=random_seed)
     env_renderer = RenderTool(env, gl="PILSVG")
     env_renderer.render_env(show=True, frames=True, show_observations=True)
