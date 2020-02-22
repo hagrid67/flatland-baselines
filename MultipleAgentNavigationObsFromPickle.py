@@ -48,7 +48,7 @@ train_set = True
 if train_set: random_seed = np.random.randint(1000)
 else: random_seed = np.random.randint(1000,2000)
 
-test_env_no = np.random.randint(9)
+test_env_no = np.random.randint(10)
 level_no = np.random.randint(2)
 random.seed(random_seed)
 np.random.seed(random_seed)
